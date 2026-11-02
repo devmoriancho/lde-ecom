@@ -1,8 +1,19 @@
 import { db } from "@/lib/db";
 import { products } from "@/lib/db/schema";
+import { desc, gt } from "drizzle-orm";
 
 export default async function ProductsPage() {
-  const allProducts = await db.select().from(products);
+  const page = 1;
+  const pageSize = 10;
+  const offset = (page - 1) * pageSize;
+
+  const allProducts = await db
+    .select()
+    .from(products)
+    .where(gt(products.stock, 0))
+    .orderBy(desc(products.createdAt))
+    .limit(pageSize)
+    .offset(offset);
 
   return (
     <main className="p-8">
