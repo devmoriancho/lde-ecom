@@ -2,6 +2,8 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { products } from "@/lib/db/schema";
 import { desc } from "drizzle-orm";
+import { deleteProduct } from "@/app/actions/products";
+import DeleteProductButton from "./DeleteProductButton";
 
 export default async function AdminProductsPage() {
   const allProducts = await db
@@ -33,6 +35,13 @@ export default async function AdminProductsPage() {
               <p>Price: ${product.price}</p>
               <p>Stock: {product.stock}</p>
               <p>{product.description}</p>
+              <Link
+                href={`/admin/products/${product.id}/edit`}
+                className="inline-block mt-4 bg-blue-600 text-white px-4 py-2 rounded"
+              >
+                Edit Product
+              </Link>
+              <DeleteProductButton productId={product.id} />
             </div>
           ))}
         </div>

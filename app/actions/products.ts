@@ -59,10 +59,5 @@ export async function updateProduct(formData: FormData) {
 }
 
 export async function deleteProduct(productId: string) {
-  const deletedProduct = await db
-    .delete(products)
-    .where(eq(products.id, productId))
-    .returning();
-
-  return deletedProduct;
+  await db.delete(products).where(eq(products.id, productId));
 }
