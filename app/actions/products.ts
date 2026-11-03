@@ -5,6 +5,7 @@ import { products } from "@/lib/db/schema";
 import { productSchema } from "@/lib/validations/product";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { requireAdmin } from "@/lib/auth-guard";
 
 export type ProductFormState = {
   success: boolean;
@@ -27,6 +28,7 @@ export async function createProduct(
   previousState: ProductFormState,
   formData: FormData,
 ): Promise<ProductFormState> {
+  await requireAdmin();
   const rawData = {
     name: formData.get("name"),
     price: formData.get("price"),
@@ -88,6 +90,7 @@ export async function updateProduct(
   previousState: ProductFormState,
   formData: FormData,
 ): Promise<ProductFormState> {
+  await requireAdmin();
   const id = formData.get("id") as string;
 
   const rawData = {
@@ -152,6 +155,7 @@ export async function deleteProduct(
   _previousState: DeleteProductState,
   formData: FormData,
 ): Promise<DeleteProductState> {
+  await requireAdmin();
   const productId = formData.get("productId") as string;
 
   try {
