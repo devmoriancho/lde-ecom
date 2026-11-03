@@ -2,27 +2,66 @@
 
 import { db } from "@/lib/db";
 import { products } from "@/lib/db/schema";
+import { productSchema } from "@/lib/validations/product";
 import { eq } from "drizzle-orm";
 
-export async function createProduct(formData: FormData) {
-  const name = formData.get("name") as string;
-  const price = formData.get("price") as string;
-  const stock = Number(formData.get("stock"));
-  const description = formData.get("description") as string;
-  const image = formData.get("image") as string;
+export type ProductFormState = {
+  success: boolean;
+  message: string;
+  errors: {
+    name?: string[];
+    price?: string[];
+    stock?: string[];
+    description?: string[];
+    image?: string[];
+  };
+};
 
-  const newProduct = await db
-    .insert(products)
-    .values({
+export async function createProduct(
+  previousState: ProductFormState,
+  formData: FormData,
+): Promise<ProductFormState> {
+  const rawData = {
+    name: formData.get("name"),
+    price: formData.get("price"),
+    stock: Number(formData.get("stock")),
+    description: formData.get("description") as string,
+    image: formData.get("image") as string,
+  };
+
+  const validation = productSchema.safeParse(rawData);
+
+  if (!validation.success) {
+    return {
+      success: false,
+      message: "Please correct the errors below.",
+      errors: validation.error.flatten().fieldErrors,
+    };
+  }
+
+  const { name, price, stock, description, image } = validation.data;
+
+  try {
+    await db.insert(products).values({
       name,
       price,
       stock,
       description,
       image,
-    })
-    .returning();
+    });
 
-  console.log("Product created:", newProduct);
+    return {
+      success: true,
+      message: "Product created successfully!",
+      errors: {},
+    };
+  } catch {
+    return {
+      success: false,
+      message: "Something went wrong while creating the product.",
+      errors: {},
+    };
+  }
 }
 
 export async function updateProductStock(productId: string, newStock: number) {
@@ -37,25 +76,56 @@ export async function updateProductStock(productId: string, newStock: number) {
   return updatedProduct;
 }
 
-export async function updateProduct(formData: FormData) {
+export async function updateProduct(
+  previousState: ProductFormState,
+  formData: FormData,
+): Promise<ProductFormState> {
   const id = formData.get("id") as string;
 
-  const name = formData.get("name") as string;
-  const price = formData.get("price") as string;
-  const stock = Number(formData.get("stock"));
-  const description = formData.get("description") as string;
-  const image = formData.get("image") as string;
+  const rawData = {
+    name: formData.get("name"),
+    price: formData.get("price"),
+    stock: Number(formData.get("stock")),
+    description: formData.get("description") as string,
+    image: formData.get("image") as string,
+  };
 
-  await db
-    .update(products)
-    .set({
-      name,
-      price,
-      stock,
-      description,
-      image,
-    })
-    .where(eq(products.id, id));
+  const validation = productSchema.safeParse(rawData);
+
+  if (!validation.success) {
+    return {
+      success: false,
+      message: "Please correct the errors below.",
+      errors: validation.error.flatten().fieldErrors,
+    };
+  }
+
+  const { name, price, stock, description, image } = validation.data;
+
+  try {
+    await db
+      .update(products)
+      .set({
+        name,
+        price,
+        stock,
+        description,
+        image,
+      })
+      .where(eq(products.id, id));
+
+    return {
+      success: true,
+      message: "Product updated successfully!",
+      errors: {},
+    };
+  } catch {
+    return {
+      success: false,
+      message: "Something went wrong while updating the product.",
+      errors: {},
+    };
+  }
 }
 
 export async function deleteProduct(productId: string) {

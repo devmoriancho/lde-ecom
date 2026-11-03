@@ -2,7 +2,6 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { products } from "@/lib/db/schema";
 import { desc } from "drizzle-orm";
-import { deleteProduct } from "@/app/actions/products";
 import DeleteProductButton from "./DeleteProductButton";
 
 export default async function AdminProductsPage() {
