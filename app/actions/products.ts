@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { products } from "@/lib/db/schema";
 import { productSchema } from "@/lib/validations/product";
 import { eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 
 export type ProductFormState = {
   success: boolean;
@@ -15,6 +16,11 @@ export type ProductFormState = {
     description?: string[];
     image?: string[];
   };
+};
+
+export type DeleteProductState = {
+  success: boolean;
+  message: string;
 };
 
 export async function createProduct(
@@ -49,6 +55,8 @@ export async function createProduct(
       description,
       image,
     });
+
+    revalidatePath("/admin/products");
 
     return {
       success: true,
@@ -103,7 +111,7 @@ export async function updateProduct(
   const { name, price, stock, description, image } = validation.data;
 
   try {
-    await db
+    const updatedProduct = await db
       .update(products)
       .set({
         name,
@@ -112,7 +120,19 @@ export async function updateProduct(
         description,
         image,
       })
-      .where(eq(products.id, id));
+      .where(eq(products.id, id))
+      .returning();
+
+    if (updatedProduct.length === 0) {
+      return {
+        success: false,
+        message: "Product not found. It may have been deleted.",
+        errors: {},
+      };
+    }
+
+    revalidatePath("/admin/products");
+    revalidatePath(`/admin/products/${id}/edit`);
 
     return {
       success: true,
@@ -128,6 +148,37 @@ export async function updateProduct(
   }
 }
 
-export async function deleteProduct(productId: string) {
-  await db.delete(products).where(eq(products.id, productId));
+export async function deleteProduct(
+  _previousState: DeleteProductState,
+  formData: FormData,
+): Promise<DeleteProductState> {
+  const productId = formData.get("productId") as string;
+
+  try {
+    const deletedProduct = await db
+      .delete(products)
+      .where(eq(products.id, productId))
+      .returning();
+
+    if (deletedProduct.length === 0) {
+      return {
+        success: false,
+        message: "Product not found. Nothing was deleted.",
+      };
+    }
+
+    revalidatePath("/admin/products");
+
+    return {
+      success: true,
+      message: "Product deleted successfully!",
+    };
+  } catch (error) {
+    console.error("Failed to delete product:", error);
+
+    return {
+      success: false,
+      message: "Unable to delete product. Please try again.",
+    };
+  }
 }
