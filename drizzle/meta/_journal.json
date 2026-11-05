@@ -22,6 +22,27 @@
       "when": 1793813074841,
       "tag": "0002_high_gargoyle",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793874499019,
+      "tag": "0003_lethal_husk",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793875167485,
+      "tag": "0004_tearful_thaddeus_ross",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793888196967,
+      "tag": "0005_sleepy_gideon",
+      "breakpoints": true
     }
   ]
 }
