@@ -15,6 +15,13 @@
       "when": 1793726603381,
       "tag": "0001_warm_meggan",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793813074841,
+      "tag": "0002_high_gargoyle",
+      "breakpoints": true
     }
   ]
 }

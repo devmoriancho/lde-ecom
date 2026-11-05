@@ -3,6 +3,7 @@ import { products } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import Image from "next/image";
+import AddToCartButton from "./add-to-cart-button";
 
 type ProductDetailsProps = {
   params: Promise<{
@@ -54,6 +55,11 @@ export default async function ProductDetails({ params }: ProductDetailsProps) {
             <p className="mt-2">
               {product.stock > 0 ? "Available" : "Out of stock"}
             </p>
+
+            <AddToCartButton
+              productId={product.id}
+              disabled={product.stock <= 0}
+            />
           </div>
         </div>
       </section>

@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -48,5 +49,33 @@ export const products = pgTable(
   (table) => [
     check("products_price_non_negative", sql`${table.price} >= 0`),
     check("products_stock_non_negative", sql`${table.stock} >= 0`),
+  ],
+);
+
+export const cartItems = pgTable(
+  "cart_items",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+
+    quantity: integer("quantity").notNull().default(1),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    unique("cart_items_user_product_unique").on(table.userId, table.productId),
+    check("cart_items_quantity_positive", sql`${table.quantity} > 0`),
   ],
 );
