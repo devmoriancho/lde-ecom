@@ -120,12 +120,18 @@ export async function createOrder(input: unknown) {
         .toString()
         .padStart(2, "0")}`;
 
+      const reservationExpiresAt =
+        validation.data.paymentMethod === "cash_on_delivery"
+          ? null
+          : new Date(Date.now() + 15 * 60 * 1000);
+
       const [newOrder] = await tx
         .insert(orders)
         .values({
           userId,
           total: orderTotal,
           paymentMethod: validation.data.paymentMethod,
+          stockReservationExpiresAt: reservationExpiresAt,
           shippingName: validation.data.shippingName,
           shippingPhone: validation.data.shippingPhone,
           shippingCounty: validation.data.shippingCounty,

@@ -98,6 +98,16 @@ export const orders = pgTable(
       .default("pending")
       .notNull(),
 
+    stockReservationExpiresAt: timestamp("stock_reservation_expires_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+
+    stockRestoredAt: timestamp("stock_restored_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+
     shippingName: varchar("shipping_name", { length: 255 }).notNull(),
 
     shippingPhone: varchar("shipping_phone", { length: 20 }).notNull(),

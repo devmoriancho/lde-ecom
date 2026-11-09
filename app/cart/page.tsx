@@ -117,12 +117,12 @@ export default async function CartPage() {
                 </div>
               </div>
 
-              <button
-                disabled
-                className="mt-6 w-full rounded-xl bg-gray-900 px-5 py-3 font-semibold text-white opacity-60 cursor-not-allowed"
+              <Link
+                href="/checkout"
+                className="mt-6 block w-full rounded-xl bg-gray-900 px-5 py-3 text-center font-semibold text-white hover:bg-gray-700 transition-colors"
               >
-                Checkout (Coming Soon)
-              </button>
+                Proceed to Checkout
+              </Link>
             </aside>
           </div>
         )}

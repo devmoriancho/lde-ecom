@@ -2,8 +2,8 @@
 
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { orders } from "@/lib/db/schema";
-import { and, eq } from "drizzle-orm";
+import { orders, orderItems, products } from "@/lib/db/schema";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -58,6 +58,7 @@ export async function updateOrderStatus(input: unknown) {
         status: orders.status,
         paymentMethod: orders.paymentMethod,
         paymentStatus: orders.paymentStatus,
+        stockRestoredAt: orders.stockRestoredAt,
       })
       .from(orders)
       .where(eq(orders.id, validation.data.orderId))
@@ -82,6 +83,16 @@ export async function updateOrderStatus(input: unknown) {
       };
     }
 
+    if (
+      validation.data.status === "cancelled" &&
+      existingOrder.paymentStatus === "paid"
+    ) {
+      return {
+        success: false,
+        message: "Paid orders must be refunded before they can be cancelled.",
+      };
+    }
+
     const allowedStatuses: readonly string[] =
       allowedOrderTransitions[existingOrder.status];
 
@@ -92,15 +103,96 @@ export async function updateOrderStatus(input: unknown) {
       };
     }
 
-    const updatedOrder = await db
-      .update(orders)
-      .set({
-        status: validation.data.status,
-      })
-      .where(eq(orders.id, validation.data.orderId))
-      .returning({
-        id: orders.id,
-      });
+    const updatedOrder = await db.transaction(async (tx) => {
+      const [lockedOrder] = await tx
+        .select({
+          id: orders.id,
+          status: orders.status,
+          paymentMethod: orders.paymentMethod,
+          paymentStatus: orders.paymentStatus,
+          stockRestoredAt: orders.stockRestoredAt,
+        })
+        .from(orders)
+        .where(eq(orders.id, validation.data.orderId))
+        .for("update")
+        .limit(1);
+
+      if (!lockedOrder) {
+        throw new Error("ORDER_NOT_FOUND");
+      }
+
+      if (
+        lockedOrder.status !== existingOrder.status ||
+        lockedOrder.paymentStatus !== existingOrder.paymentStatus
+      ) {
+        throw new Error("ORDER_CHANGED");
+      }
+
+      const currentAllowedStatuses: readonly string[] =
+        allowedOrderTransitions[lockedOrder.status];
+
+      if (!currentAllowedStatuses.includes(validation.data.status)) {
+        throw new Error("INVALID_ORDER_TRANSITION");
+      }
+
+      if (validation.data.status === "cancelled") {
+        const items = await tx
+          .select({
+            productId: orderItems.productId,
+            quantity: orderItems.quantity,
+          })
+          .from(orderItems)
+          .where(eq(orderItems.orderId, validation.data.orderId));
+
+        const restorationClaim = await tx
+          .update(orders)
+          .set({
+            stockRestoredAt: new Date(),
+            stockReservationExpiresAt: null,
+          })
+          .where(
+            and(
+              eq(orders.id, validation.data.orderId),
+              isNull(orders.stockRestoredAt),
+            ),
+          )
+          .returning({
+            id: orders.id,
+          });
+
+        if (restorationClaim.length > 0) {
+          for (const item of items) {
+            if (!item.productId) {
+              continue;
+            }
+
+            await tx
+              .update(products)
+              .set({
+                stock: sql`${products.stock} + ${item.quantity}`,
+              })
+              .where(eq(products.id, item.productId));
+          }
+        }
+      }
+
+      const result = await tx
+        .update(orders)
+        .set({
+          status: validation.data.status,
+        })
+        .where(
+          and(
+            eq(orders.id, validation.data.orderId),
+            eq(orders.status, lockedOrder.status),
+          ),
+        )
+        .returning({
+          id: orders.id,
+        });
+
+      return result;
+    });
 
     if (updatedOrder.length === 0) {
       return {
@@ -120,6 +212,25 @@ export async function updateOrderStatus(input: unknown) {
     };
   } catch (error) {
     console.error("Order status update failed:", error);
+
+    if (error instanceof Error) {
+      if (error.message === "ORDER_NOT_FOUND") {
+        return { success: false, message: "Order not found." };
+      }
+      if (error.message === "ORDER_CHANGED") {
+        return {
+          success: false,
+          message:
+            "Order status was updated by another request. Please refresh.",
+        };
+      }
+      if (error.message === "INVALID_ORDER_TRANSITION") {
+        return {
+          success: false,
+          message: "The requested order status transition is invalid.",
+        };
+      }
+    }
 
     return {
       success: false,
@@ -184,6 +295,7 @@ export async function updatePaymentStatus(input: unknown) {
         and(
           eq(orders.id, validation.data.orderId),
           eq(orders.paymentMethod, "cash_on_delivery"),
+          ne(orders.status, "cancelled"),
         ),
       )
       .returning({
