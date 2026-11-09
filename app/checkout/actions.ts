@@ -5,6 +5,22 @@ import { db } from "@/lib/db";
 import { cartItems, products, orders, orderItems } from "@/lib/db/schema";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { checkoutSchema } from "@/lib/validations/checkout";
+import { sendEmail } from "@/lib/email";
+import { createOrderConfirmationEmail } from "@/lib/email-templates";
+
+type OrderCreationResult =
+  | {
+      success: false;
+      message: string;
+    }
+  | {
+      success: true;
+      message: string;
+      orderId: string;
+      total: string;
+      reservationExpiresAt: Date | null;
+      paymentMethod: "mpesa" | "stripe" | "cash_on_delivery";
+    };
 
 export async function validateCheckout(input: unknown) {
   const session = await auth();
@@ -55,115 +71,155 @@ export async function createOrder(input: unknown) {
   }
 
   try {
-    const result = await db.transaction(async (tx) => {
-      const cart = await tx
-        .select({
-          productId: products.id,
-          productName: products.name,
-          price: products.price,
-          quantity: cartItems.quantity,
-          stock: products.stock,
-        })
-        .from(cartItems)
-        .innerJoin(products, eq(cartItems.productId, products.id))
-        .where(eq(cartItems.userId, userId));
-
-      if (cart.length === 0) {
-        return {
-          success: false,
-          message: "Your shopping cart is empty.",
-        };
-      }
-
-      const unavailableItem = cart.find((item) => item.quantity > item.stock);
-
-      if (unavailableItem) {
-        return {
-          success: false,
-          message: `Insufficient stock for ${unavailableItem.productName}. Available stock: ${unavailableItem.stock}.`,
-        };
-      }
-
-      for (const item of cart) {
-        const updatedProducts = await tx
-          .update(products)
-          .set({
-            stock: sql`${products.stock} - ${item.quantity}`,
+    const result: OrderCreationResult =
+      await db.transaction<OrderCreationResult>(async (tx) => {
+        const cart = await tx
+          .select({
+            productId: products.id,
+            productName: products.name,
+            price: products.price,
+            quantity: cartItems.quantity,
+            stock: products.stock,
           })
-          .where(
-            and(
-              eq(products.id, item.productId),
-              gte(products.stock, item.quantity),
-            ),
-          )
+          .from(cartItems)
+          .innerJoin(products, eq(cartItems.productId, products.id))
+          .where(eq(cartItems.userId, userId));
+
+        if (cart.length === 0) {
+          return {
+            success: false,
+            message: "Your shopping cart is empty.",
+          };
+        }
+
+        const unavailableItem = cart.find((item) => item.quantity > item.stock);
+
+        if (unavailableItem) {
+          return {
+            success: false,
+            message: `Insufficient stock for ${unavailableItem.productName}. Available stock: ${unavailableItem.stock}.`,
+          };
+        }
+
+        for (const item of cart) {
+          const updatedProducts = await tx
+            .update(products)
+            .set({
+              stock: sql`${products.stock} - ${item.quantity}`,
+            })
+            .where(
+              and(
+                eq(products.id, item.productId),
+                gte(products.stock, item.quantity),
+              ),
+            )
+            .returning({
+              id: products.id,
+            });
+
+          if (updatedProducts.length === 0) {
+            throw new Error(`INSUFFICIENT_STOCK:${item.productName}`);
+          }
+        }
+
+        const totalCents = cart.reduce((total, item) => {
+          const [whole, fraction = "00"] = item.price.split(".");
+
+          const priceInCents =
+            BigInt(whole) * BigInt(100) + BigInt(fraction.padEnd(2, "0"));
+
+          return total + priceInCents * BigInt(item.quantity);
+        }, BigInt(0));
+
+        const orderTotal = `${totalCents / BigInt(100)}.${(
+          totalCents % BigInt(100)
+        )
+          .toString()
+          .padStart(2, "0")}`;
+
+        const reservationExpiresAt =
+          validation.data.paymentMethod === "cash_on_delivery"
+            ? null
+            : new Date(Date.now() + 15 * 60 * 1000);
+
+        const [newOrder] = await tx
+          .insert(orders)
+          .values({
+            userId,
+            total: orderTotal,
+            paymentMethod: validation.data.paymentMethod,
+            stockReservationExpiresAt: reservationExpiresAt,
+            shippingName: validation.data.shippingName,
+            shippingPhone: validation.data.shippingPhone,
+            shippingCounty: validation.data.shippingCounty,
+            shippingTown: validation.data.shippingTown,
+            shippingAddress: validation.data.shippingAddress,
+            deliveryInstructions: validation.data.deliveryInstructions || null,
+          })
           .returning({
-            id: products.id,
+            id: orders.id,
           });
 
-        if (updatedProducts.length === 0) {
-          throw new Error(`INSUFFICIENT_STOCK:${item.productName}`);
-        }
-      }
+        await tx.insert(orderItems).values(
+          cart.map((item) => ({
+            orderId: newOrder.id,
+            productId: item.productId,
+            productName: item.productName,
+            unitPrice: item.price,
+            quantity: item.quantity,
+          })),
+        );
 
-      const totalCents = cart.reduce((total, item) => {
-        const [whole, fraction = "00"] = item.price.split(".");
+        await tx.delete(cartItems).where(eq(cartItems.userId, userId));
 
-        const priceInCents =
-          BigInt(whole) * BigInt(100) + BigInt(fraction.padEnd(2, "0"));
-
-        return total + priceInCents * BigInt(item.quantity);
-      }, BigInt(0));
-
-      const orderTotal = `${totalCents / BigInt(100)}.${(
-        totalCents % BigInt(100)
-      )
-        .toString()
-        .padStart(2, "0")}`;
-
-      const reservationExpiresAt =
-        validation.data.paymentMethod === "cash_on_delivery"
-          ? null
-          : new Date(Date.now() + 15 * 60 * 1000);
-
-      const [newOrder] = await tx
-        .insert(orders)
-        .values({
-          userId,
+        return {
+          success: true,
+          message: "Order created successfully.",
+          orderId: newOrder.id,
           total: orderTotal,
+          reservationExpiresAt,
           paymentMethod: validation.data.paymentMethod,
-          stockReservationExpiresAt: reservationExpiresAt,
-          shippingName: validation.data.shippingName,
-          shippingPhone: validation.data.shippingPhone,
-          shippingCounty: validation.data.shippingCounty,
-          shippingTown: validation.data.shippingTown,
-          shippingAddress: validation.data.shippingAddress,
-          deliveryInstructions: validation.data.deliveryInstructions || null,
-        })
-        .returning({
-          id: orders.id,
+        };
+      });
+
+    if (!result.success) {
+      return result;
+    }
+
+    let emailSent = false;
+
+    if (session.user.email) {
+      try {
+        const emailContent = createOrderConfirmationEmail({
+          customerName: validation.data.shippingName,
+          orderId: result.orderId,
+          total: result.total,
+          paymentMethod: result.paymentMethod,
+          reservationExpiresAt: result.reservationExpiresAt,
         });
 
-      await tx.insert(orderItems).values(
-        cart.map((item) => ({
-          orderId: newOrder.id,
-          productId: item.productId,
-          productName: item.productName,
-          unitPrice: item.price,
-          quantity: item.quantity,
-        })),
-      );
+        const emailResult = await sendEmail({
+          to: session.user.email,
+          subject: emailContent.subject,
+          html: emailContent.html,
+          text: emailContent.text,
+        });
 
-      await tx.delete(cartItems).where(eq(cartItems.userId, userId));
+        emailSent = emailResult.success;
+      } catch (emailError) {
+        console.error("Order confirmation email failed:", emailError);
+      }
+    }
 
-      return {
-        success: true,
-        message: "Order created successfully.",
-        orderId: newOrder.id,
-        total: orderTotal,
-      };
-    });
-
-    return result;
+    return {
+      success: true,
+      message: emailSent
+        ? "Order created successfully. Confirmation email sent."
+        : "Order created successfully, but confirmation email could not be sent.",
+      orderId: result.orderId,
+      total: result.total,
+      emailSent,
+    };
   } catch (error) {
     console.error("Order preparation failed:", error);
 
@@ -171,7 +227,7 @@ export async function createOrder(input: unknown) {
       error instanceof Error &&
       error.message.startsWith("INSUFFICIENT_STOCK:")
     ) {
-      const productName = error.message.split(":");
+      const productName = error.message.split(":")[1] || "Product";
 
       return {
         success: false,
