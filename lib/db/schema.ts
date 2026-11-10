@@ -103,6 +103,22 @@ export const orders = pgTable(
       mode: "date",
     }),
 
+    paymentReminderSentAt: timestamp("payment_reminder_sent_at", {
+      withTimezone: true,
+    }),
+
+    paymentReminderClaimedAt: timestamp("payment_reminder_claimed_at", {
+      withTimezone: true,
+    }),
+
+    expiryEmailSentAt: timestamp("expiry_email_sent_at", {
+      withTimezone: true,
+    }),
+
+    expiryEmailClaimedAt: timestamp("expiry_email_claimed_at", {
+      withTimezone: true,
+    }),
+
     stockRestoredAt: timestamp("stock_restored_at", {
       withTimezone: true,
       mode: "date",
