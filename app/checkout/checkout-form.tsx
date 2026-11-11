@@ -46,6 +46,11 @@ export default function CheckoutForm() {
         return;
       }
 
+      if ("checkoutUrl" in result && result.checkoutUrl) {
+        window.location.href = result.checkoutUrl;
+        return;
+      }
+
       if ("orderId" in result) {
         setMessage(`Order created successfully! Order ID: ${result.orderId}`);
       }
