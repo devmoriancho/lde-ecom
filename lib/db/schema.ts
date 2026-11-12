@@ -111,6 +111,14 @@ export const orders = pgTable(
       withTimezone: true,
     }),
 
+    stripePaymentEmailSentAt: timestamp("stripe_payment_email_sent_at", {
+      withTimezone: true,
+    }),
+
+    stripePaymentEmailClaimedAt: timestamp("stripe_payment_email_claimed_at", {
+      withTimezone: true,
+    }),
+
     expiryEmailSentAt: timestamp("expiry_email_sent_at", {
       withTimezone: true,
     }),

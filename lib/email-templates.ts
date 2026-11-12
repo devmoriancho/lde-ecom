@@ -4,6 +4,7 @@ type OrderConfirmationEmailInput = {
   total: string;
   paymentMethod: "mpesa" | "stripe" | "cash_on_delivery";
   reservationExpiresAt: Date | null;
+  paymentStatus?: "pending" | "paid";
 };
 
 function escapeHtml(value: string) {
@@ -25,6 +26,7 @@ export function createOrderConfirmationEmail({
   orderId,
   total,
   paymentMethod,
+  paymentStatus,
   reservationExpiresAt,
 }: OrderConfirmationEmailInput) {
   const safeName = escapeHtml(customerName);
@@ -42,7 +44,9 @@ export function createOrderConfirmationEmail({
   const paymentMessage =
     paymentMethod === "cash_on_delivery"
       ? "You selected Cash on Delivery. Payment will be collected when your order is delivered."
-      : "Your payment is currently pending. Please follow the payment instructions provided during checkout.";
+      : paymentMethod === "stripe" && paymentStatus === "paid"
+        ? "Your Stripe payment has been received successfully."
+        : "Your payment is currently pending. Please follow the payment instructions provided during checkout.";
 
   const expiryMessage =
     paymentMethod !== "cash_on_delivery" && reservationExpiresAt
