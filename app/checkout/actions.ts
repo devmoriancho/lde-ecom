@@ -224,6 +224,13 @@ export async function createOrder(input: unknown) {
           .toString()
           .padStart(2, "0")}`;
 
+        if (
+          validation.data.paymentMethod === "mpesa" &&
+          totalCents % BigInt(100) !== BigInt(0)
+        ) {
+          throw new Error("MPESA_WHOLE_AMOUNT_REQUIRED");
+        }
+
         const reservationExpiresAt =
           validation.data.paymentMethod === "cash_on_delivery"
             ? null
@@ -415,6 +422,16 @@ export async function createOrder(input: unknown) {
     };
   } catch (error) {
     console.error("Order preparation failed:", error);
+    if (
+      error instanceof Error &&
+      error.message === "MPESA_WHOLE_AMOUNT_REQUIRED"
+    ) {
+      return {
+        success: false,
+        message:
+          "M-PESA requires a whole KSh amount. Please adjust your cart before checkout.",
+      };
+    }
 
     if (
       error instanceof Error &&
