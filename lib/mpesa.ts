@@ -224,12 +224,29 @@ export async function queryMpesaStkPush(
     },
   );
 
-  const data = (await response.json()) as MpesaStkQueryResponse;
+  const responseText = await response.text();
 
-  if (!response.ok || data.ResponseCode !== "0") {
+  let data: MpesaStkQueryResponse = {};
+
+  try {
+    data = JSON.parse(responseText) as MpesaStkQueryResponse;
+  } catch {
+    console.error("M-PESA returned a non-JSON response.");
+  }
+
+  if (!response.ok) {
+    console.error("M-PESA HTTP STATUS:", response.status);
+    console.error("M-PESA ERROR BODY:", responseText);
+
     throw new Error(
       data.ResponseDescription ??
-        `M-PESA STK Query failed with status ${response.status}.`,
+        `M-PESA STK Query failed with status ${response.status}: ${responseText}`,
+    );
+  }
+
+  if (data.ResponseCode !== "0") {
+    throw new Error(
+      data.ResponseDescription ?? "M-PESA STK Query was unsuccessful.",
     );
   }
 
