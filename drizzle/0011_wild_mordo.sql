@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD COLUMN "mpesa_merchant_request_id" text;

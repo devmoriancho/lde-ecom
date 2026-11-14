@@ -8,6 +8,7 @@ import { checkoutSchema } from "@/lib/validations/checkout";
 import { sendEmail } from "@/lib/email";
 import { createOrderConfirmationEmail } from "@/lib/email-templates";
 import { stripe } from "@/lib/stripe";
+import { initiateMpesaStkPush, normalizeMpesaPhoneNumber } from "@/lib/mpesa";
 
 type OrderCreationResult =
   | {
@@ -157,6 +158,39 @@ export async function createOrder(input: unknown) {
     };
   }
 
+  let mpesaPhoneNumber: string | null = null;
+  let mpesaCallbackUrl: string | null = null;
+
+  if (validation.data.paymentMethod === "mpesa") {
+    try {
+      mpesaPhoneNumber = normalizeMpesaPhoneNumber(
+        validation.data.shippingPhone,
+      );
+
+      const callbackUrl = process.env.MPESA_CALLBACK_URL;
+
+      if (!callbackUrl) {
+        throw new Error("M-PESA callback URL is not configured.");
+      }
+
+      const parsedCallbackUrl = new URL(callbackUrl);
+
+      if (parsedCallbackUrl.protocol !== "https:") {
+        throw new Error("M-PESA callback URL must use HTTPS.");
+      }
+
+      mpesaCallbackUrl = parsedCallbackUrl.toString();
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Invalid M-PESA checkout configuration.",
+      };
+    }
+  }
+
   try {
     const result: OrderCreationResult =
       await db.transaction<OrderCreationResult>(async (tx) => {
@@ -284,6 +318,54 @@ export async function createOrder(input: unknown) {
 
     if (!result.success) {
       return result;
+    }
+
+    // Initiate M-PESA STK Push
+    if (result.paymentMethod === "mpesa") {
+      try {
+        const stkResponse = await initiateMpesaStkPush({
+          phoneNumber: mpesaPhoneNumber!,
+          amount: Number(result.total),
+          accountReference: result.orderId.slice(0, 12),
+          transactionDesc: "CommerceHub order payment",
+          callbackUrl: mpesaCallbackUrl!,
+        });
+
+        if (!stkResponse.MerchantRequestID || !stkResponse.CheckoutRequestID) {
+          throw new Error(
+            "M-PESA did not return the required request identifiers.",
+          );
+        }
+
+        await db
+          .update(orders)
+          .set({
+            mpesaMerchantRequestId: stkResponse.MerchantRequestID,
+            mpesaCheckoutRequestId: stkResponse.CheckoutRequestID,
+            mpesaPhoneNumber,
+          })
+          .where(eq(orders.id, result.orderId));
+
+        return {
+          success: true,
+          message:
+            stkResponse.CustomerMessage ??
+            "M-PESA payment request sent. Please check your phone.",
+          orderId: result.orderId,
+          total: result.total,
+          paymentMethod: "mpesa" as const,
+        };
+      } catch (error) {
+        console.error("M-PESA STK Push failed:", error);
+
+        return {
+          success: true,
+          message: `Your order was created, but we could not confirm the M-PESA request. Your order reference is ${result.orderId}. Please check your phone and contact support if necessary.`,
+          orderId: result.orderId,
+          total: result.total,
+          paymentMethod: "mpesa" as const,
+        };
+      }
     }
 
     // Create Stripe Checkout Session

@@ -88,6 +88,28 @@ type MpesaStkPushResponse = {
   CustomerMessage?: string;
 };
 
+export function normalizeMpesaPhoneNumber(phone: string): string {
+  const cleaned = phone.replace(/[\s\-()]/g, "");
+
+  if (/^07\d{8}$/.test(cleaned)) {
+    return `254${cleaned.slice(1)}`;
+  }
+
+  if (/^01\d{8}$/.test(cleaned)) {
+    return `254${cleaned.slice(1)}`;
+  }
+
+  if (/^\+254[17]\d{8}$/.test(cleaned)) {
+    return cleaned.slice(1);
+  }
+
+  if (/^254[17]\d{8}$/.test(cleaned)) {
+    return cleaned;
+  }
+
+  throw new Error("Enter a valid Kenyan M-PESA number, such as 0712345678.");
+}
+
 type StkPushInput = {
   phoneNumber: string;
   amount: number;
@@ -109,8 +131,8 @@ export async function initiateMpesaStkPush(
     throw new Error("M-PESA amount must be a positive whole number.");
   }
 
-  if (!/^2547\d{8}$/.test(input.phoneNumber)) {
-    throw new Error("Phone number must use the format 2547XXXXXXXX.");
+  if (!/^254[17]\d{8}$/.test(input.phoneNumber)) {
+    throw new Error("Invalid M-PESA phone number.");
   }
 
   const callbackUrl = new URL(input.callbackUrl);
@@ -153,6 +175,61 @@ export async function initiateMpesaStkPush(
     throw new Error(
       data.ResponseDescription ??
         `M-PESA STK Push failed with status ${response.status}.`,
+    );
+  }
+
+  return data;
+}
+
+type MpesaStkQueryResponse = {
+  ResponseCode?: string;
+  ResponseDescription?: string;
+  MerchantRequestID?: string;
+  CheckoutRequestID?: string;
+  ResultCode?: string | number;
+  ResultDesc?: string;
+};
+
+export async function queryMpesaStkPush(
+  checkoutRequestId: string,
+): Promise<MpesaStkQueryResponse> {
+  const shortcode = process.env.MPESA_SHORTCODE;
+
+  if (!shortcode) {
+    throw new Error("M-PESA shortcode is missing.");
+  }
+
+  if (!checkoutRequestId) {
+    throw new Error("M-PESA Checkout Request ID is missing.");
+  }
+
+  const accessToken = await getMpesaAccessToken();
+  const { timestamp, password } = generateMpesaPassword();
+
+  const response = await fetch(
+    "https://sandbox.safaricom.co.ke/mpesa/stkpushquery/v1/query",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        BusinessShortCode: shortcode,
+        Password: password,
+        Timestamp: timestamp,
+        CheckoutRequestID: checkoutRequestId,
+      }),
+      cache: "no-store",
+    },
+  );
+
+  const data = (await response.json()) as MpesaStkQueryResponse;
+
+  if (!response.ok || data.ResponseCode !== "0") {
+    throw new Error(
+      data.ResponseDescription ??
+        `M-PESA STK Query failed with status ${response.status}.`,
     );
   }
 

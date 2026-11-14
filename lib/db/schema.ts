@@ -148,6 +148,8 @@ export const orders = pgTable(
 
     stripePaymentIntentId: text("stripe_payment_intent_id"),
 
+    mpesaMerchantRequestId: text("mpesa_merchant_request_id"),
+
     mpesaCheckoutRequestId: text("mpesa_checkout_request_id"),
 
     mpesaReceiptNumber: varchar("mpesa_receipt_number", {
@@ -156,6 +158,14 @@ export const orders = pgTable(
 
     mpesaPhoneNumber: varchar("mpesa_phone_number", {
       length: 20,
+    }),
+
+    mpesaPaymentEmailSentAt: timestamp("mpesa_payment_email_sent_at", {
+      withTimezone: true,
+    }),
+
+    mpesaPaymentEmailClaimedAt: timestamp("mpesa_payment_email_claimed_at", {
+      withTimezone: true,
     }),
   },
   (table) => [check("orders_total_non_negative", sql`${table.total} >= 0`)],
