@@ -52,13 +52,7 @@ export default function CheckoutForm() {
       }
 
       if ("orderId" in result) {
-        if (result.paymentMethod === "mpesa") {
-          setMessage(
-            `M-PESA payment request sent! Check your phone and enter your M-PESA PIN to complete payment. Order ID: ${result.orderId}`,
-          );
-        } else {
-          setMessage(`Order created successfully! Order ID: ${result.orderId}`);
-        }
+        setMessage(`${result.message} Order ID: ${result.orderId}`);
       }
     } catch (error) {
       console.error("Checkout failed:", error);

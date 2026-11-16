@@ -169,12 +169,30 @@ export async function initiateMpesaStkPush(
     },
   );
 
-  const data = (await response.json()) as MpesaStkPushResponse;
+  const responseText = await response.text();
+
+  let data: MpesaStkPushResponse;
+
+  try {
+    data = JSON.parse(responseText) as MpesaStkPushResponse;
+  } catch {
+    console.error("M-PESA STK Push returned an invalid JSON response.", {
+      status: response.status,
+    });
+
+    throw new Error("M-PESA returned an invalid response.");
+  }
 
   if (!response.ok || data.ResponseCode !== "0") {
+    console.error("M-PESA STK Push rejected:", {
+      status: response.status,
+      responseCode: data.ResponseCode,
+      responseDescription: data.ResponseDescription,
+    });
+
     throw new Error(
       data.ResponseDescription ??
-        `M-PESA STK Push failed with status ${response.status}.`,
+        `M-PESA STK Push failed with HTTP status ${response.status}.`,
     );
   }
 
