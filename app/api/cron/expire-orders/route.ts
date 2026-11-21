@@ -44,8 +44,6 @@ export async function GET(request: Request) {
   try {
     // PHASE 1: Expire orders, restore stock and claim expiry emails.
     const claimedOrders = await db.transaction(async (tx) => {
-      console.log("Expiry claim column:", orders.expiryEmailClaimedAt);
-      console.log("Expiry sent column:", orders.expiryEmailSentAt);
       const dueOrders = await tx
         .select({
           id: orders.id,
