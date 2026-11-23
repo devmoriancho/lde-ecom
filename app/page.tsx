@@ -5,12 +5,6 @@ import Link from "next/link";
 
 export default async function Home() {
   const allProducts = await db.select().from(products);
-  console.log(
-    allProducts.map((product) => ({
-      name: product.name,
-      image: product.image,
-    })),
-  );
 
   return (
     <main className="min-h-screen">
